@@ -1,7 +1,7 @@
 import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, statSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -11,20 +11,35 @@ const PORT = process.env.PORT || 3000;
 const BASE_PATH = '/log-lottery';
 const DIST_DIR = join(__dirname, 'dist');
 
-// 静态文件服务 - 处理 /log-lottery/ 路径下的所有静态资源
-app.use(`${BASE_PATH}`, express.static(DIST_DIR, {
-  index: false, // 禁用默认的 index.html 处理
-}));
+// 静态文件服务 - 将 /log-lottery/xxx 映射到 dist/xxx
+// 例如: /log-lottery/js/chunk.js -> dist/js/chunk.js
+app.use(`${BASE_PATH}`, (req, res, next) => {
+  // 移除 BASE_PATH 前缀，获取实际文件路径
+  let filePath = req.path.replace(BASE_PATH, '') || '/';
+  // 移除开头的斜杠（如果存在）
+  if (filePath.startsWith('/')) {
+    filePath = filePath.substring(1);
+  }
+  
+  const actualPath = join(DIST_DIR, filePath);
+  
+  // 检查文件是否存在
+  if (existsSync(actualPath)) {
+    const stats = statSync(actualPath);
+    if (stats.isFile()) {
+      // 是文件，直接返回
+      return res.sendFile(actualPath);
+    }
+  }
+  
+  // 不是文件或不存在，继续处理（可能是 SPA 路由）
+  next();
+});
 
 // 处理 SPA 路由 - 所有非静态资源请求都返回 index.html
 app.get(`${BASE_PATH}/*`, (req, res) => {
-  const filePath = join(DIST_DIR, req.path.replace(BASE_PATH, ''));
-  
-  // 如果是静态资源文件且存在，express.static 已经处理了
-  // 这里只处理 HTML 路由
+  // 如果是静态资源文件扩展名，返回 404（应该已经被上面的中间件处理了）
   if (req.path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|json|gz)$/)) {
-    // 静态资源应该已经被 express.static 处理了
-    // 如果到这里说明文件不存在，返回 404
     return res.status(404).send('File not found');
   }
   
