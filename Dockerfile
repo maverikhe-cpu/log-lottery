@@ -19,19 +19,17 @@ RUN pnpm build
 # 使用 Nginx 镜像作为运行时镜像
 FROM nginx:1.26
 
-# 修改nginx配置
-# 向 #error_page 前添加内容
-# location /log-lottery {
-#           alias /usr/share/nginx/log-lottery;
-#           index index.html index.htm;
-#           try_files $uri $uri/ /log-lottery/index.html;
-#         }
-RUN sed -i 's/#error_page/location \/log-lottery {\n          alias \/usr\/share\/nginx\/log-lottery;\n          index index.html index.htm;\n          try_files $uri $uri\/ \/log-lottery\/index.html;\n        }\n#error_page/' /etc/nginx/conf.d/default.conf
+# 安装 envsubst 用于替换环境变量
+RUN apt-get update && apt-get install -y gettext-base && rm -rf /var/lib/apt/lists/*
+
+# 复制自定义 nginx 配置文件到模板目录
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 
 # 将 Vite 项目的 dist 目录复制到 Nginx 的默认静态文件目录
 COPY --from=0 /usr/src/app/dist /usr/share/nginx/log-lottery
 
-# 暴露容器的 80 端口
+# 暴露端口（zeabur 会通过环境变量 PORT 指定，默认 80）
 EXPOSE 80
 
-# Nginx 会在容器启动时自动运行，无需手动设置 CMD
+# 设置默认 PORT 环境变量，使用 envsubst 替换环境变量并启动 nginx
+CMD ["/bin/sh", "-c", "export PORT=${PORT:-80} && envsubst '$$PORT' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
